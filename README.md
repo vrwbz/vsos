@@ -4,7 +4,7 @@ A small x86_64 operating-system learning project written in Rust.
 
 ## First milestone
 
-The kernel boots in QEMU and renders a lightweight VGA dashboard with kernel, architecture, runtime, display, and boot-service status panels.
+The kernel boots in QEMU and renders a lightweight VGA dashboard with kernel, architecture, runtime, display, and boot-service status panels. The command bar accepts `help`, `status`, `about`, and `clear`.
 
 ## Prerequisites
 

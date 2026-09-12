@@ -3,20 +3,29 @@
 
 use core::panic::PanicInfo;
 use bootloader::{entry_point, BootInfo};
+use x86_64::instructions::port::Port;
 
 entry_point!(kernel_main);
 
 fn kernel_main(_boot_info: &'static BootInfo) -> ! {
     let mut screen = Screen::new();
     screen.draw();
+    let mut keyboard = Keyboard::new();
 
     loop {
+        if let Some(scancode) = keyboard.read_scancode() {
+            if let Some(key) = Keyboard::ascii(scancode) {
+                screen.handle_key(key);
+            }
+        }
         x86_64::instructions::hlt();
     }
 }
 
 struct Screen {
     buffer: *mut u8,
+    input: [u8; 32],
+    input_len: usize,
 }
 
 impl Screen {
@@ -24,7 +33,11 @@ impl Screen {
     const HEIGHT: usize = 25;
 
     fn new() -> Self {
-        Self { buffer: 0xb8000 as *mut u8 }
+        Self {
+            buffer: 0xb8000 as *mut u8,
+            input: [0; 32],
+            input_len: 0,
+        }
     }
 
     fn draw(&mut self) {
@@ -56,7 +69,59 @@ impl Screen {
         self.status(4, 18, "MEMORY MAP", "READY");
         self.status(29, 18, "INTERRUPTS", "STANDBY");
         self.status(56, 18, "SHELL", "NEXT");
+        self.text(2, 22, "TYPE HELP FOR COMMANDS", 0x08);
+        self.text(2, 23, "COMMAND > ", 0x0b);
+        self.text_bytes(12, 23, &self.input[..self.input_len], 0x0f);
         self.text(2, 24, "  VSOS  /  KERNEL ONLINE  /  BUILD 2026.09", 0x17);
+    }
+
+    fn handle_key(&mut self, key: u8) {
+        match key {
+            b'\n' => self.submit_command(),
+            8 => {
+                if self.input_len > 0 {
+                    self.input_len -= 1;
+                    self.input[self.input_len] = 0;
+                    self.cell(12 + self.input_len, 23, b' ', 0x0f);
+                }
+            }
+            byte if self.input_len < self.input.len() && byte.is_ascii_graphic() => {
+                self.input[self.input_len] = byte;
+                self.input_len += 1;
+                self.cell(11 + self.input_len, 23, byte, 0x0f);
+            }
+            _ => {}
+        }
+    }
+
+    fn submit_command(&mut self) {
+        self.clear_line(22);
+        if self.input == [0; 32] {
+            self.text(2, 22, "ENTER A COMMAND - TRY HELP", 0x0e);
+        } else if self.matches(b"help") {
+            self.text(2, 22, "HELP: STATUS  ABOUT  CLEAR  HELP", 0x0b);
+        } else if self.matches(b"status") {
+            self.text(2, 22, "STATUS: KERNEL READY / VGA READY / INPUT READY", 0x1a);
+        } else if self.matches(b"about") {
+            self.text(2, 22, "VSOS: A SMALL, CURIOUS SYSTEM BUILT FROM FIRST PRINCIPLES", 0x0f);
+        } else if self.matches(b"clear") {
+            self.draw();
+            return;
+        } else {
+            self.text(2, 22, "UNKNOWN COMMAND - TRY HELP", 0x0c);
+        }
+        self.input = [0; 32];
+        self.input_len = 0;
+        self.clear_line(23);
+        self.text(2, 23, "COMMAND > ", 0x0b);
+    }
+
+    fn matches(&self, command: &[u8]) -> bool {
+        self.input_len == command.len() && self.input[..self.input_len] == *command
+    }
+
+    fn clear_line(&self, row: usize) {
+        self.fill_rect(0, row, Self::WIDTH, 1, 0x10);
     }
 
     fn fill_rect(&self, x: usize, y: usize, width: usize, height: usize, color: u8) {
@@ -89,7 +154,11 @@ impl Screen {
     }
 
     fn text(&self, x: usize, y: usize, value: &str, color: u8) {
-        for (offset, byte) in value.bytes().enumerate() {
+        self.text_bytes(x, y, value.as_bytes(), color);
+    }
+
+    fn text_bytes(&self, x: usize, y: usize, value: &[u8], color: u8) {
+        for (offset, byte) in value.iter().copied().enumerate() {
             if x + offset >= Self::WIDTH || y >= Self::HEIGHT {
                 break;
             }
@@ -105,6 +174,44 @@ impl Screen {
         unsafe {
             self.buffer.add(offset).write_volatile(character);
             self.buffer.add(offset + 1).write_volatile(color);
+        }
+    }
+}
+
+struct Keyboard {
+    status: Port<u8>,
+    data: Port<u8>,
+}
+
+impl Keyboard {
+    fn new() -> Self {
+        Self {
+            status: Port::new(0x64),
+            data: Port::new(0x60),
+        }
+    }
+
+    fn read_scancode(&mut self) -> Option<u8> {
+        unsafe {
+            if self.status.read() & 1 == 0 {
+                None
+            } else {
+                Some(self.data.read())
+            }
+        }
+    }
+
+    fn ascii(scancode: u8) -> Option<u8> {
+        const KEYS: &[u8] = b"?1234567890-=\tqwertyuiop[]\n?asdfghjkl;'`?\\zxcvbnm,./";
+        if scancode & 0x80 != 0 {
+            return None;
+        }
+        match scancode {
+            0x0e => Some(8),
+            0x39 => Some(b' '),
+            0x1c => Some(b'\n'),
+            code if (code as usize) < KEYS.len() => Some(KEYS[code as usize]),
+            _ => None,
         }
     }
 }

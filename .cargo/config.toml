@@ -4,7 +4,7 @@ target = "x86_64-unknown-none"
 [target.'cfg(target_os = "none")']
 runner = "bootimage runner"
 rustflags = [
-	"-C", "link-arg=--no-rosegment",
+	"-C", "link-arg=--image-base=0x200000",
 ]
 
 [unstable]

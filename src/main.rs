@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use core::panic::PanicInfo;
 use bootloader::{entry_point, BootInfo};
+use core::panic::PanicInfo;
 use x86_64::instructions::port::Port;
 
 entry_point!(kernel_main);
@@ -45,24 +45,29 @@ impl Screen {
         self.fill_rect(0, 0, Self::WIDTH, 3, 0x1f);
         self.text(2, 1, "VSOS", 0x1f);
         self.text(11, 1, "VIRTUAL SYSTEM OPERATING SYSTEM", 0x1f);
-        self.text(66, 1, "ONLINE", 0x1a);
+        self.text(66, 1, "[ONLINE]", 0x1a);
 
         self.text(2, 4, "SYSTEM OVERVIEW", 0x0b);
-        self.draw_box(2, 5, 36, 8, 0x08);
-        self.text(4, 7, "KERNEL", 0x07);
-        self.text(25, 7, "VSOS 0.1.0", 0x0f);
-        self.text(4, 9, "ARCHITECTURE", 0x07);
-        self.text(25, 9, "x86_64", 0x0f);
-        self.text(4, 11, "RUNTIME", 0x07);
-        self.text(25, 11, "BARE METAL", 0x0f);
+        self.text(56, 4, "BUILD 0.1.0", 0x08);
+        self.draw_box(2, 5, 36, 9, 0x08);
+        self.text(4, 6, "KERNEL", 0x07);
+        self.text(25, 6, "VSOS 0.1.0", 0x0f);
+        self.text(4, 8, "ARCHITECTURE", 0x07);
+        self.text(25, 8, "x86_64", 0x0f);
+        self.text(4, 10, "RUNTIME", 0x07);
+        self.text(25, 10, "BARE METAL", 0x0f);
+        self.text(4, 12, "SECURITY", 0x07);
+        self.text(25, 12, "RING 0", 0x0f);
 
-        self.draw_box(41, 5, 37, 8, 0x08);
-        self.text(43, 7, "BOOT STATUS", 0x07);
-        self.text(69, 7, "READY", 0x1a);
-        self.text(43, 9, "DISPLAY", 0x07);
-        self.text(69, 9, "VGA TEXT", 0x0f);
-        self.text(43, 11, "UPTIME", 0x07);
-        self.text(69, 11, "00:00:01", 0x0f);
+        self.draw_box(41, 5, 37, 9, 0x08);
+        self.text(43, 6, "BOOT STATUS", 0x07);
+        self.text(69, 6, "READY", 0x1a);
+        self.text(43, 8, "DISPLAY", 0x07);
+        self.text(69, 8, "VGA TEXT", 0x0f);
+        self.text(43, 10, "UPTIME", 0x07);
+        self.text(69, 10, "RUNNING", 0x0f);
+        self.text(43, 12, "INPUT", 0x07);
+        self.text(69, 12, "PS/2", 0x0f);
 
         self.text(2, 15, "BOOT SERVICES", 0x0b);
         self.draw_box(2, 16, 76, 6, 0x08);
@@ -72,6 +77,7 @@ impl Screen {
         self.text(2, 22, "TYPE HELP FOR COMMANDS", 0x08);
         self.text(2, 23, "COMMAND > ", 0x0b);
         self.text_bytes(12, 23, &self.input[..self.input_len], 0x0f);
+        self.cell(12 + self.input_len, 23, b'_', 0x0f);
         self.text(2, 24, "  VSOS  /  KERNEL ONLINE  /  BUILD 2026.09", 0x17);
     }
 
@@ -82,13 +88,14 @@ impl Screen {
                 if self.input_len > 0 {
                     self.input_len -= 1;
                     self.input[self.input_len] = 0;
-                    self.cell(12 + self.input_len, 23, b' ', 0x0f);
+                    self.cell(12 + self.input_len, 23, b'_', 0x0f);
                 }
             }
             byte if self.input_len < self.input.len() && byte.is_ascii_graphic() => {
                 self.input[self.input_len] = byte;
                 self.input_len += 1;
                 self.cell(11 + self.input_len, 23, byte, 0x0f);
+                self.cell(12 + self.input_len, 23, b'_', 0x0f);
             }
             _ => {}
         }
@@ -96,15 +103,29 @@ impl Screen {
 
     fn submit_command(&mut self) {
         self.clear_line(22);
-        if self.input == [0; 32] {
+        if self.input_len == 0 {
             self.text(2, 22, "ENTER A COMMAND - TRY HELP", 0x0e);
         } else if self.matches(b"help") {
-            self.text(2, 22, "HELP: STATUS  ABOUT  CLEAR  HELP", 0x0b);
+            self.text(2, 22, "HELP: STATUS  ABOUT  VERSION  CLEAR  HELP", 0x0b);
         } else if self.matches(b"status") {
-            self.text(2, 22, "STATUS: KERNEL READY / VGA READY / INPUT READY", 0x1a);
+            self.text(
+                2,
+                22,
+                "STATUS: KERNEL READY / VGA READY / INPUT READY",
+                0x1a,
+            );
         } else if self.matches(b"about") {
-            self.text(2, 22, "VSOS: A SMALL, CURIOUS SYSTEM BUILT FROM FIRST PRINCIPLES", 0x0f);
+            self.text(
+                2,
+                22,
+                "VSOS: A SMALL, CURIOUS SYSTEM BUILT FROM FIRST PRINCIPLES",
+                0x0f,
+            );
+        } else if self.matches(b"version") {
+            self.text(2, 22, "VSOS KERNEL 0.1.0 / x86_64 / NIGHTLY RUST", 0x0f);
         } else if self.matches(b"clear") {
+            self.input = [0; 32];
+            self.input_len = 0;
             self.draw();
             return;
         } else {
@@ -114,6 +135,7 @@ impl Screen {
         self.input_len = 0;
         self.clear_line(23);
         self.text(2, 23, "COMMAND > ", 0x0b);
+        self.cell(12, 23, b'_', 0x0f);
     }
 
     fn matches(&self, command: &[u8]) -> bool {

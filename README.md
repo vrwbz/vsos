@@ -4,7 +4,7 @@ A small x86_64 operating-system learning project written in Rust.
 
 ## First milestone
 
-The kernel boots in QEMU and renders a lightweight VGA dashboard with kernel, architecture, runtime, display, and boot-service status panels. The command bar accepts `help`, `status`, `about`, and `clear`.
+The kernel boots in QEMU and renders a lightweight VGA dashboard with kernel, architecture, runtime, display, and boot-service status panels. The command bar accepts `help`, `status`, `about`, `version`, and `clear`.
 
 ## Prerequisites
 
@@ -23,6 +23,9 @@ cargo +nightly bootimage
 $env:Path += ";C:\Program Files\qemu"
 cargo +nightly run
 ```
+
+The final command launches QEMU through the runner configured in
+[`.cargo/config.toml`](.cargo/config.toml). Close QEMU with `Ctrl+C` in the terminal.
 
 ## GitHub
 
